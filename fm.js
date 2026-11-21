@@ -200,8 +200,8 @@
       '<main><div class="stage"><div class="qcard" id="qc">' + (it.art ? '<div class="art">' + it.art + '</div>' : '') +
       '<div class="q"><span>' + it.q + '</span>' + sayBtn(it.q) + '</div>' +
       '<div class="till">' + MONEY.map(function (m) { return '<button class="mbtn" type="button" data-v="' + m[0] + '" aria-label="Add ' + (m[0] >= 1 ? '$' + m[0] + ' bill' : Math.round(m[0] * 100) + ' cent coin') + '">' + (ICONS[m[1]] || m[0]) + '</button>'; }).join('') + '</div>' +
-      '<div class="trayhead"><strong>' + (A.trayLabel || 'Your money:') + '</strong> <span id="tot">$0.00</span> <button class="say" type="button" id="undo">Take back last</button> <button class="say" type="button" id="clr">Start over</button></div>' +
-      '<div class="tray" id="tray"></div><p><button class="big" id="chk" type="button">' + (A.payLabel || 'Pay') + '</button></p></div>' +
+      '<div class="trayhead"><strong>Your money:</strong> <span id="tot">$0.00</span> <button class="say" type="button" id="undo">Take back last</button> <button class="say" type="button" id="clr">Start over</button></div>' +
+      '<div class="tray" id="tray"></div><p><button class="big" id="chk" type="button">Pay</button></p></div>' +
       '<aside class="fb" id="fb" aria-live="polite"></aside></div></main>';
     function sum() { return Math.round(tray.reduce(function (a, b) { return a + b; }, 0) * 100) / 100; }
     function draw() {
@@ -216,7 +216,7 @@
       if (Math.abs(s2 - t) < 0.001) {
         if (tries === 0) score++;
         fb.className = 'fb show ok';
-        fb.innerHTML = '<h2>' + CHEERS[Math.floor(Math.random() * CHEERS.length)] + '</h2><p>' + (A.okText || 'You paid exactly') + ' <strong>' + fmt(t) + '</strong>.' + (it.why ? ' ' + it.why : '') + '</p><button class="big" id="nx" type="button">Next</button>';
+        fb.innerHTML = '<h2>' + CHEERS[Math.floor(Math.random() * CHEERS.length)] + '</h2><p>You paid exactly <strong>' + fmt(t) + '</strong>.' + (it.why ? ' ' + it.why : '') + '</p><button class="big" id="nx" type="button">Next</button>';
         document.getElementById('nx').onclick = function () { idx++; if (idx < order.length) register(); else finish(); };
         document.getElementById('nx').focus();
       } else {
