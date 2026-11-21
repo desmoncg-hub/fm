@@ -5,7 +5,7 @@
   var CHEERS = ['Great job!', 'You got it!', 'Nice work!', 'Excellent thinking!'];
   var SPEAK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
   var canSpeak = 'speechSynthesis' in window;
-  function speak(t) { if (!canSpeak) return; speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t.replace(/<[^>]+>/g, ' ')); u.lang = 'en-US'; u.rate = 0.9; speechSynthesis.speak(u); }
+  function speak(t) { if (!canSpeak) return; speechSynthesis.cancel(); var dd = document.createElement('textarea'); dd.innerHTML = t.replace(/<[^>]+>/g, ' '); var u = new SpeechSynthesisUtterance(dd.value.replace(/&minus;|\u2212/g, ' minus ')); u.lang = 'en-US'; u.rate = 0.9; speechSynthesis.speak(u); }
   function sayBtn(text) { if (!canSpeak) return ''; return '<button class="say" type="button" data-say="' + esc(text) + '" aria-label="Read to me">' + SPEAK + 'Read</button>'; }
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
@@ -13,6 +13,7 @@
   root.addEventListener('click', function (e) { var b = e.target.closest('[data-say]'); if (b) { e.stopPropagation(); speak(b.getAttribute('data-say')); } });
 
   document.title = A.title;
+  if (A.theme) { document.documentElement.style.setProperty('--main', A.theme[0]); document.documentElement.style.setProperty('--light', A.theme[1]); }
   var cite = A.title + ' created by Mr. Desmond with support from Claude.';
   document.body.insertAdjacentHTML('beforeend', '<footer class="cite">' + cite + '</footer>');
 
@@ -35,6 +36,8 @@
   function begin() {
     score = 0; idx = 0;
     if (A.mode === 'board') return board();
+    if (A.mode === 'register') { order = A.items.slice(); return register(); }
+    if (A.mode === 'flash') { order = A.shuffle === false ? A.items.slice() : shuffle(A.items); return flash(); }
     order = A.shuffle === false ? A.items.slice() : shuffle(A.items);
     show();
   }
@@ -59,8 +62,20 @@
       for (var s = 0; s < stepI; s++) html += '<div class="done">' + it.steps[s].q + ' <strong>' + it.steps[s].answer + '</strong></div>';
       html += '</div>';
     }
+    if (q.type) {
+      html += '<div class="q"><span>' + q.q + '</span>' + sayBtn(q.q) + '</div>' +
+        '<div class="typebox"><label for="ans" class="tlabel">Type your answer' + (q.unit === '$' ? ' (dollars)' : '') + ':</label>' +
+        '<div class="trow">' + (q.unit === '$' ? '<span class="dollar">$</span>' : '') + '<input id="ans" inputmode="decimal" autocomplete="off">' +
+        '<button class="big" id="chk" type="button">Check</button></div><p class="tip">You may use a calculator.</p></div>';
+      var qc0 = document.getElementById('qc'); qc0.innerHTML = html;
+      var inp = document.getElementById('ans'); inp.focus();
+      document.getElementById('chk').onclick = function () { checkTyped(inp); };
+      inp.onkeydown = function (e) { if (e.key === 'Enter') checkTyped(inp); };
+      document.getElementById('fb').className = 'fb';
+      return;
+    }
     html += '<div class="q"><span>' + q.q + '</span>' + sayBtn(q.q) + '</div><div class="choices">';
-    var ch = shuffle(q.choices.map(function (c) { return typeof c === 'string' ? { label: c } : c; }));
+    var ch = q.choices.map(function (c) { return typeof c === 'string' ? { label: c } : c; }); if (!q.fixed) ch = shuffle(ch);
     ch.forEach(function (c) { html += '<button class="choice" type="button" data-a="' + esc(c.label) + '">' + icon(c.icon) + '<span>' + c.label + '</span></button>'; });
     html += '</div>';
     var qc = document.getElementById('qc'); qc.innerHTML = html;
@@ -141,9 +156,82 @@
     });
   }
 
+  function num(v) { return parseFloat(String(v).replace(/[$,\s]/g, '')); }
+  function checkTyped(inp) {
+    var q = current(), v = num(inp.value), fb = document.getElementById('fb');
+    if (inp.value.trim() === '' || isNaN(v)) { fb.className = 'fb show no'; fb.innerHTML = '<h2>Type a number</h2><p>Type your answer in the box, then press Check.</p>'; return; }
+    if (Math.abs(v - num(q.answer)) < 0.005) {
+      inp.disabled = true; document.getElementById('chk').disabled = true;
+      if (firstTry) score++;
+      fb.className = 'fb show ok';
+      fb.innerHTML = '<h2>' + CHEERS[Math.floor(Math.random() * CHEERS.length)] + '</h2><p>The answer is <strong>' + q.answer + '</strong>.' + (q.why ? ' ' + q.why : '') + '</p><button class="big" id="nx" type="button">Next</button>';
+      document.getElementById('nx').onclick = function () { idx++; if (idx < order.length) show(); else finish(); };
+      document.getElementById('nx').focus();
+    } else {
+      firstTry = false;
+      fb.className = 'fb show no';
+      fb.innerHTML = '<h2>Not yet!</h2><p><strong>Hint:</strong> ' + q.hint + '</p><p>Please try again.</p>' + sayBtn('Hint. ' + q.hint) + '<br><button class="big" id="ta" type="button">Try Again</button>';
+      document.getElementById('ta').onclick = function () { fb.className = 'fb'; inp.select(); inp.focus(); };
+    }
+  }
+
+  function flash() {
+    var it = order[idx], label = 'Card ' + (idx + 1) + ' of ' + order.length, flipped = false;
+    root.innerHTML = header(label, Math.round(idx / order.length * 100)) +
+      '<main><div class="card center flash">' + (it.art ? '<div class="art">' + it.art + '</div>' : '') +
+      '<div class="fword" id="fw"></div><div class="fback" id="fbk"></div>' +
+      '<p><button class="big" id="flip" type="button">Flip the card</button> <button class="big" id="nx" type="button" style="display:none">Next card</button></p></div></main>';
+    function draw() {
+      document.getElementById('fw').innerHTML = '<span>' + it.front + '</span>' + sayBtn(it.front);
+      document.getElementById('fbk').innerHTML = flipped ? '<span>' + it.back + '</span>' + sayBtn(it.back) : '<span class="tip">Say what it means. Then flip the card to check.</span>';
+      document.getElementById('nx').style.display = flipped ? 'inline-block' : 'none';
+      document.getElementById('flip').textContent = flipped ? 'Flip back' : 'Flip the card';
+    }
+    draw();
+    document.getElementById('flip').onclick = function () { flipped = !flipped; draw(); };
+    document.getElementById('nx').onclick = function () { idx++; if (idx < order.length) flash(); else finish(); };
+  }
+
+  var MONEY = [[20, 'b20'], [10, 'b10'], [5, 'b5'], [1, 'b1'], [0.25, 'c25'], [0.10, 'c10'], [0.05, 'c5'], [0.01, 'c1']];
+  function fmt(v) { return '$' + v.toFixed(2); }
+  function register() {
+    var it = order[idx], tray = [], tries = 0;
+    root.innerHTML = header('Customer ' + (idx + 1) + ' of ' + order.length, Math.round(idx / order.length * 100)) +
+      '<main><div class="stage"><div class="qcard" id="qc">' + (it.art ? '<div class="art">' + it.art + '</div>' : '') +
+      '<div class="q"><span>' + it.q + '</span>' + sayBtn(it.q) + '</div>' +
+      '<div class="till">' + MONEY.map(function (m) { return '<button class="mbtn" type="button" data-v="' + m[0] + '" aria-label="Add ' + (m[0] >= 1 ? '$' + m[0] + ' bill' : Math.round(m[0] * 100) + ' cent coin') + '">' + (ICONS[m[1]] || m[0]) + '</button>'; }).join('') + '</div>' +
+      '<div class="trayhead"><strong>Your money:</strong> <span id="tot">$0.00</span> <button class="say" type="button" id="undo">Take back last</button> <button class="say" type="button" id="clr">Start over</button></div>' +
+      '<div class="tray" id="tray"></div><p><button class="big" id="chk" type="button">Pay</button></p></div>' +
+      '<aside class="fb" id="fb" aria-live="polite"></aside></div></main>';
+    function sum() { return Math.round(tray.reduce(function (a, b) { return a + b; }, 0) * 100) / 100; }
+    function draw() {
+      document.getElementById('tot').textContent = fmt(sum());
+      document.getElementById('tray').innerHTML = tray.map(function (v) { var m = MONEY.filter(function (x) { return x[0] === v; })[0]; return '<span class="tm">' + ICONS[m[1]] + '</span>'; }).join('');
+    }
+    root.querySelectorAll('.mbtn').forEach(function (b) { b.onclick = function () { tray.push(parseFloat(b.getAttribute('data-v'))); draw(); document.getElementById('fb').className = 'fb'; }; });
+    document.getElementById('undo').onclick = function () { tray.pop(); draw(); };
+    document.getElementById('clr').onclick = function () { tray = []; draw(); };
+    document.getElementById('chk').onclick = function () {
+      var fb = document.getElementById('fb'), s2 = sum(), t = it.target;
+      if (Math.abs(s2 - t) < 0.001) {
+        if (tries === 0) score++;
+        fb.className = 'fb show ok';
+        fb.innerHTML = '<h2>' + CHEERS[Math.floor(Math.random() * CHEERS.length)] + '</h2><p>You paid exactly <strong>' + fmt(t) + '</strong>.' + (it.why ? ' ' + it.why : '') + '</p><button class="big" id="nx" type="button">Next</button>';
+        document.getElementById('nx').onclick = function () { idx++; if (idx < order.length) register(); else finish(); };
+        document.getElementById('nx').focus();
+      } else {
+        tries++;
+        var diff = Math.round((t - s2) * 100) / 100;
+        fb.className = 'fb show no';
+        fb.innerHTML = '<h2>Not yet!</h2><p>You have <strong>' + fmt(s2) + '</strong>. ' + (diff > 0 ? 'You need <strong>' + fmt(diff) + ' more</strong>.' : 'That is <strong>' + fmt(-diff) + ' too much</strong>. Take some back.') + '</p><p><strong>Hint:</strong> ' + it.hint + '</p>' + sayBtn('Hint. ' + it.hint) + '<br><button class="big" id="ta" type="button">Keep going</button>';
+        document.getElementById('ta').onclick = function () { fb.className = 'fb'; };
+      }
+    };
+  }
+
   function finish() {
     var d = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-    var line = A.mode === 'board' ? 'Your score: <strong>' + score + ' points</strong>' : 'Right on the first try: <strong>' + score + ' of ' + order.length + '</strong>';
+    var line = A.mode === 'board' ? 'Your score: <strong>' + score + ' points</strong>' : A.mode === 'flash' ? 'You reviewed all <strong>' + order.length + ' cards</strong>.' : 'Right on the first try: <strong>' + score + ' of ' + order.length + '</strong>';
     root.innerHTML = header('All done!', 100) + '<main><div class="card center"><h1>You worked hard today!</h1><p class="ml">' + A.title + ' &bull; ' + A.where + '</p>' +
       '<p>' + line + '</p><p>' + d + '</p><p>Take a screenshot if your teacher asks for one.</p>' +
       '<button class="big" id="again" type="button">Start Over</button></div></main>';
